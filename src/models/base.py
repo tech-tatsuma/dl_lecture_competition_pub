@@ -129,7 +129,8 @@ class VQAModel(nn.Module):
     def __init__(self, vocab_size: int, n_answer: int):
         super().__init__()
         self.resnet = ResNet18()
-        self.text_encoder = nn.Linear(vocab_size, 512)
+        # self.text_encoder = nn.Linear(vocab_size, 512)
+        self.embedding = nn.Embedding(vocab_size, 512)
 
         self.fc = nn.Sequential(
             nn.Linear(1024, 512),
@@ -141,7 +142,8 @@ class VQAModel(nn.Module):
         # 画像の特徴量を抽出(224*224=>512)
         image_feature = self.resnet(image)
         # テキストの特徴量を抽出(vocab_sie=>512)
-        question_feature = self.text_encoder(question)
+        # question_feature = self.text_encoder(question)
+        question_feature = self.embedding(question).mean(dim=1)
 
         # 特徴量の結合
         x = torch.cat([image_feature, question_feature], dim=1)

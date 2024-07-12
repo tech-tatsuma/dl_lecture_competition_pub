@@ -6,11 +6,16 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torchvision import transforms
+from setproctitle import setproctitle
 
 from src import datasets
 from src.models import base
 
 from src.utils import set_seed
+
+import sys
+import requests
+import json
 
 # 評価指標の実装
 # 簡単にするならBCEを利用する
@@ -114,11 +119,20 @@ def eval(model, dataloader, optimizer, criterion, device):
 
     return total_loss / len(dataloader), total_acc / len(dataloader), simple_acc / len(dataloader), time.time() - start
 
+# vocab_sizeを取得する関数を追加
+def get_vocab_size(merges_path, encoder_json_path):
+    # BPE mergesファイルを読み込む
+    merges = requests.get(merges_path).text.split("\n")
+    # Encoderファイルを読み込む
+    encoder = requests.get(encoder_json_path).json()
+    # 辞書のサイズを計算
+    return len(encoder)
 
 def main():
     # deviceの設定とシードの固定
     set_seed(42)
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"device: {device}")
 
     # 画像データの前処理の定義
     transform = transforms.Compose([
@@ -132,11 +146,15 @@ def main():
     test_dataset.update_dict(train_dataset)
 
     # データローダーの作成
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=128, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=1, shuffle=False)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=128, shuffle=True, collate_fn=datasets.collate_fn)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=1, shuffle=False, collate_fn=datasets.collate_fn)
+
+    # vocab_sizeの取得
+    vocab_size = get_vocab_size("http://download.pytorch.org/models/text/clip_merges.bpe", "http://download.pytorch.org/models/text/clip_encoder.json")
 
     # モデルの作成
-    model = base.VQAModel(vocab_size=len(train_dataset.question2idx)+1, n_answer=len(train_dataset.answer2idx)).to(device)
+    # model = base.VQAModel(vocab_size=len(train_dataset.question2idx)+1, n_answer=len(train_dataset.answer2idx)).to(device)
+    model = base.VQAModel(vocab_size=vocab_size + 1, n_answer=len(train_dataset.answer2idx)).to(device)
 
     # ハイパーパラメータの設定
     num_epoch = 20
@@ -154,6 +172,7 @@ def main():
               f"train loss: {train_loss:.4f}\n"
               f"train acc: {train_acc:.4f}\n"
               f"train simple acc: {train_simple_acc:.4f}")
+        sys.stdout.flush()
 
     # 提出用ファイルの作成
     model.eval()
@@ -166,8 +185,10 @@ def main():
 
     submission = [train_dataset.idx2answer[id] for id in submission]
     submission = np.array(submission)
-    torch.save(model.state_dict(), "model.pth")
-    np.save("submission.npy", submission)
+    torch.save(model.state_dict(), outputpath + "model.pth")
+    np.save(outputpath + "submission.npy", submission)
 
 if __name__ == "__main__":
+    setproctitle("tokenizerの導入")
+    outputpath = "/home/furuya/dl_lecture_competition_pub/logs/tokenizerの導入"
     main()
