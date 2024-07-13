@@ -7,8 +7,8 @@ from PIL import Image
 import numpy as np
 import sys
 
-from torchtext.transforms import CLIPTokenizer
 from torch.nn.utils.rnn import pad_sequence
+from transformers import BertTokenizer
 
 from .utils import set_seed
 
@@ -61,32 +61,15 @@ class VQADataset(torch.utils.data.Dataset):
         self.df = pandas.read_json(df_path)  # 画像ファイルのパス，question, answerを持つDataFrame
         self.answer = answer # answerを使用するかどうかのフラグ
 
-        self.tokenizer = CLIPTokenizer(merges_path="http://download.pytorch.org/models/text/clip_merges.bpe", encoder_json_path="http://download.pytorch.org/models/text/clip_encoder.json")
+        # self.tokenizer = CLIPTokenizer(merges_path="http://download.pytorch.org/models/text/clip_merges.bpe", encoder_json_path="http://download.pytorch.org/models/text/clip_encoder.json")
+        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 
-        # # question / answerの辞書を作成
-        # self.question2idx = {}
-        # self.answer2idx = {}
-        # self.idx2question = {}
-        # self.idx2answer = {}
-
-        # # 質問文に含まれる単語を辞書に追加
-        # for question in self.df["question"]:
-        #     question = process_text(question) # 質問文の前処理
-        #     words = question.split(" ") # 質問文を単語に分割
-        #     for word in words:
-        #         if word not in self.question2idx:
-        #             self.question2idx[word] = len(self.question2idx) # 辞書に単語を追加
-        # self.idx2question = {v: k for k, v in self.question2idx.items()}  # 逆変換用の辞書(question)
-
-        # if self.answer:
-        #     # 回答に含まれる単語を辞書に追加
-        #     for answers in self.df["answers"]:
-        #         for answer in answers:
-        #             word = answer["answer"]
-        #             word = process_text(word) # 回答の前処理
-        #             if word not in self.answer2idx:
-        #                 self.answer2idx[word] = len(self.answer2idx) # 辞書に単語を追加
-        #     self.idx2answer = {v: k for k, v in self.answer2idx.items()}  # 逆変換用の辞書(answer)
+        self.question2idx = {}
+        for question in self.df["question"]:
+            tokens = self.tokenizer.tokenize(process_text(question))
+            for token in tokens:
+                if token not in self.question2idx:
+                    self.question2idx[token] = len(self.question2idx)
 
         if self.answer:
             # 回答に含まれる単語を辞書に追加
@@ -138,21 +121,10 @@ class VQADataset(torch.utils.data.Dataset):
         image = Image.open(f"{self.image_dir}/{self.df['image'][idx]}")
         # 画像の前処理を行う
         image = self.transform(image)
-        # # one-hot表現のための配列（未知語用の要素を追加）
-        # question = np.zeros(len(self.idx2question) + 1)  # 未知語用の要素を追加
-        # # 質問文を単語に分割
-        # # question_words = self.df["question"][idx].split(" ")
-        # question_words = process_text(self.df["question"][idx]).split(" ")
-        # for word in question_words:
-        #     try:
-        #         question[self.question2idx[word]] = 1  # one-hot表現に変換
-        #     except KeyError:
-        #         question[-1] = 1  # 未知語
 
         # 質問文のトークナイズ
         question = process_text(self.df["question"][idx])
-        question_tokens = self.tokenizer(question)
-        question_ids = torch.tensor([int(token) for token in question_tokens], dtype=torch.long)
+        question_tokens = self.tokenizer.encode_plus(question, add_special_tokens=True, return_tensors="pt")
 
         if self.answer:
             # 回答のリスト
@@ -161,13 +133,11 @@ class VQADataset(torch.utils.data.Dataset):
             mode_answer_idx = mode(answers)  # 最頻値を取得（正解ラベル）
 
             # 回答ありの場合の返り値
-            # return image, torch.Tensor(question), torch.Tensor(answers), int(mode_answer_idx)
-            return image, question_ids, torch.tensor(answers, dtype=torch.long), torch.tensor([mode_answer_idx], dtype=torch.long)
+            return image, question_tokens['input_ids'].squeeze(0), torch.tensor(answers, dtype=torch.long), torch.tensor([mode_answer_idx], dtype=torch.long)
 
         else:
             # 回答なしの場合の返り値
-            # return image, torch.Tensor(question)
-            return image, question_ids
+            return image, question_tokens['input_ids'].squeeze(0)
 
     def __len__(self):
         """
@@ -178,7 +148,7 @@ class VQADataset(torch.utils.data.Dataset):
 def collate_fn(batch):
     images, questions, answers, mode_answers = zip(*batch)
     images = torch.stack(images, dim=0)
-    questions = pad_sequence(questions, batch_first=True, padding_value=0)
+    questions = pad_sequence([q for q in questions], batch_first=True, padding_value=0)
     answers = torch.stack(answers, dim=0)
     mode_answers = torch.stack(mode_answers, dim=0)
     return images, questions, answers, mode_answers

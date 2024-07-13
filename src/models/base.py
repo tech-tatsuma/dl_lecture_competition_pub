@@ -1,152 +1,44 @@
 import torch
 import torch.nn as nn
+from torchvision import models
+from transformers import BertModel
 
 from ..utils import set_seed
 
 set_seed(42)
 
-class BasicBlock(nn.Module):
-    expansion = 1
-
-    def __init__(self, in_channels: int, out_channels: int, stride: int = 1):
-        super().__init__()
-
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1)
-        self.bn1 = nn.BatchNorm2d(out_channels)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
-        self.bn2 = nn.BatchNorm2d(out_channels)
-        self.relu = nn.ReLU(inplace=True)
-
-        self.shortcut = nn.Sequential()
-        if stride != 1 or in_channels != out_channels:
-            self.shortcut = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride),
-                nn.BatchNorm2d(out_channels)
-            )
-
-    def forward(self, x):
-        # residualのためにxを保存
-        residual = x
-        # 1つ目の畳み込み層
-        out = self.relu(self.bn1(self.conv1(x)))
-        # 2つ目の畳み込み層とバッチノーマリゼーション
-        out = self.bn2(self.conv2(out))
-
-        # residualと出力を足し合わせる
-        out += self.shortcut(residual)
-
-        # 出力をランプ関数に通す
-        out = self.relu(out)
-
-        return out
-
-
-class BottleneckBlock(nn.Module):
-    expansion = 4
-
-    def __init__(self, in_channels: int, out_channels: int, stride: int = 1):
-        super().__init__()
-
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1)
-        self.bn1 = nn.BatchNorm2d(out_channels)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=stride, padding=1)
-        self.bn2 = nn.BatchNorm2d(out_channels)
-        self.conv3 = nn.Conv2d(out_channels, out_channels * self.expansion, kernel_size=1, stride=1)
-        self.bn3 = nn.BatchNorm2d(out_channels * self.expansion)
-        self.relu = nn.ReLU(inplace=True)
-
-        self.shortcut = nn.Sequential()
-        if stride != 1 or in_channels != out_channels * self.expansion:
-            self.shortcut = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels * self.expansion, kernel_size=1, stride=stride),
-                nn.BatchNorm2d(out_channels * self.expansion)
-            )
-
-    def forward(self, x):
-        residual = x
-        out = self.relu(self.bn1(self.conv1(x)))
-        out = self.relu(self.bn2(self.conv2(out)))
-        out = self.bn3(self.conv3(out))
-
-        out += self.shortcut(residual)
-        out = self.relu(out)
-
-        return out
-
-
-class ResNet(nn.Module):
-    def __init__(self, block, layers):
-        super().__init__()
-        self.in_channels = 64
-
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3)
-        self.bn1 = nn.BatchNorm2d(64)
-        self.relu = nn.ReLU(inplace=True)
-        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-
-        self.layer1 = self._make_layer(block, layers[0], 64)
-        self.layer2 = self._make_layer(block, layers[1], 128, stride=2)
-        self.layer3 = self._make_layer(block, layers[2], 256, stride=2)
-        self.layer4 = self._make_layer(block, layers[3], 512, stride=2)
-
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(512 * block.expansion, 512)
-
-    def _make_layer(self, block, blocks, out_channels, stride=1):
-        layers = []
-        layers.append(block(self.in_channels, out_channels, stride))
-        self.in_channels = out_channels * block.expansion
-        for _ in range(1, blocks):
-            layers.append(block(self.in_channels, out_channels))
-
-        return nn.Sequential(*layers)
-
-    def forward(self, x):
-        x = self.relu(self.bn1(self.conv1(x)))
-        x = self.maxpool(x)
-
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
-
-        x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc(x)
-
-        return x
-
-
-def ResNet18():
-    return ResNet(BasicBlock, [2, 2, 2, 2])
-
-
-def ResNet50():
-    return ResNet(BottleneckBlock, [3, 4, 6, 3])
-
-
 class VQAModel(nn.Module):
-    def __init__(self, vocab_size: int, n_answer: int):
+    def __init__(self, n_answer: int):
         super().__init__()
-        self.resnet = ResNet18()
-        # self.text_encoder = nn.Linear(vocab_size, 512)
-        self.embedding = nn.Embedding(vocab_size, 512)
+        # ImageNetで事前学習されたResNet18を使用
+        self.resnet = models.resnet18(pretrained=True)
+        # 事前学習モデルの最後の層を取り除く
+        self.resnet = nn.Sequential(*list(self.resnet.children())[:-1])
 
+        # BERTモデルのロード
+        self.bert = BertModel.from_pretrained("bert-base-uncased")
+
+        # 画像とテキストの特徴量を結合して処理する全結合層
+        # ResNetからの出力サイズとBERTからの出力サイズを足し合わせて入力サイズとする
         self.fc = nn.Sequential(
-            nn.Linear(1024, 512),
+            nn.Linear(512 + self.bert.config.hidden_size, 512),  # ResNetの出力512, BERTの出力768 (通常)
             nn.ReLU(inplace=True),
             nn.Linear(512, n_answer)
         )
 
-    def forward(self, image, question):
-        # 画像の特徴量を抽出(224*224=>512)
+    def forward(self, image, question_ids):
+        # 画像の特徴量を抽出
         image_feature = self.resnet(image)
-        # テキストの特徴量を抽出(vocab_sie=>512)
-        # question_feature = self.text_encoder(question)
-        question_feature = self.embedding(question).mean(dim=1)
+        image_feature = image_feature.view(image_feature.size(0), -1)  # バッチサイズに合わせてフラット化
 
-        # 特徴量の結合
-        x = torch.cat([image_feature, question_feature], dim=1)
-        x = self.fc(x)
+        # 質問の特徴量を抽出
+        question_output = self.bert(input_ids=question_ids)
+        question_feature = question_output.pooler_output  # BERTからの最終的な特徴量を使用
 
-        return x
+        # 画像特徴量と質問特徴量を結合
+        combined_features = torch.cat([image_feature, question_feature], dim=1)
+
+        # 最終出力を計算
+        output = self.fc(combined_features)
+
+        return output
