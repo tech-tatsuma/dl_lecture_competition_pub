@@ -5,3 +5,4 @@ venv
 data/
 logs/
 *.pth
+*.npy

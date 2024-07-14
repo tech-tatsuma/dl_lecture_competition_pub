@@ -144,11 +144,17 @@ class VQADataset(torch.utils.data.Dataset):
         データセットの長さを返す関数
         """
         return len(self.df)
-    
+
 def collate_fn(batch):
-    images, questions, answers, mode_answers = zip(*batch)
-    images = torch.stack(images, dim=0)
-    questions = pad_sequence([q for q in questions], batch_first=True, padding_value=0)
-    answers = torch.stack(answers, dim=0)
-    mode_answers = torch.stack(mode_answers, dim=0)
-    return images, questions, answers, mode_answers
+    if len(batch[0]) == 4:
+        images, questions, answers, mode_answers = zip(*batch)
+        images = torch.stack(images, dim=0)
+        questions = pad_sequence([q for q in questions], batch_first=True, padding_value=0)
+        answers = torch.stack(answers, dim=0)
+        mode_answers = torch.stack(mode_answers, dim=0)
+        return images, questions, answers, mode_answers
+    elif len(batch[0]) == 2:
+        images, questions = zip(*batch)
+        images = torch.stack(images, dim=0)
+        questions = pad_sequence([q for q in questions], batch_first=True, padding_value=0)
+        return images, questions
