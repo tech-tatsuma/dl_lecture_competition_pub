@@ -151,7 +151,7 @@ def objective(trial):
 
 def main():
     setproctitle("resnet+bert")
-    outputpath = "/home/furuya/dl_lecture_competition_pub/logs/resnetとbert"
+    outputpath = "/home/furuya/dl_lecture_competition_pub/logs/attention"
 
     study = optuna.create_study(direction='maximize')
     study.optimize(objective, n_trials=10)
@@ -171,6 +171,7 @@ def main():
     
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
+        transforms.RandomRotation(degrees=(-30, 30)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
