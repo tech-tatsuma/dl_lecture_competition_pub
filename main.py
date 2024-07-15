@@ -86,12 +86,13 @@ def validate(model, dataloader, criterion, device):
 
 def main():
     setproctitle("resnet+bert")
-    outputpath = "/home/furuya/dl_lecture_competition_pub/logs/resnetとbert"
+    outputpath = "/home/furuya/dl_lecture_competition_pub/logs/回転aug/"
     set_seed(42)
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
+        transforms.RandomRotation(degrees=(-30, 30)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
@@ -113,8 +114,8 @@ def main():
 
     model = base.VQAModel(n_answer=len(train_dataset.dataset.answer2idx)).to(device)
 
-    lr = round(5.8772873984691435e-05, 6)
-    weight_decay = round(6.4906417060997886e-06, 6)
+    lr = round(2.341406109338538e-05, 6)
+    weight_decay = round(1.0960750230860854e-05, 6)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
