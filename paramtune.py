@@ -151,7 +151,7 @@ def objective(trial):
 
 def main():
     setproctitle("resnet+bert")
-    outputpath = "/home/furuya/dl_lecture_competition_pub/logs/vit"
+    outputpath = "/home/furuya/dl_lecture_competition_pub/logs/trans/"
 
     study = optuna.create_study(direction='maximize')
     study.optimize(objective, n_trials=10)

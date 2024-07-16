@@ -86,7 +86,7 @@ def validate(model, dataloader, criterion, device):
 
 def main():
     setproctitle("resnet+bert")
-    outputpath = "/home/furuya/dl_lecture_competition_pub/logs/vitmain/"
+    outputpath = "/home/furuya/dl_lecture_competition_pub/logs/trans/"
     set_seed(42)
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
