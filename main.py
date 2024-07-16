@@ -86,7 +86,7 @@ def validate(model, dataloader, criterion, device):
 
 def main():
     setproctitle("resnet+bert")
-    outputpath = "/home/furuya/dl_lecture_competition_pub/logs/回転aug/"
+    outputpath = "/home/furuya/dl_lecture_competition_pub/logs/vitmain/"
     set_seed(42)
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -114,8 +114,8 @@ def main():
 
     model = base.VQAModel(n_answer=len(train_dataset.dataset.answer2idx)).to(device)
 
-    lr = round(2.341406109338538e-05, 6)
-    weight_decay = round(1.0960750230860854e-05, 6)
+    lr = round(4.704023540427905e-05, 6)
+    weight_decay = round(1.2286214982220137e-06, 6)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
@@ -127,7 +127,7 @@ def main():
     for epoch in range(100):
         train_loss, train_acc, train_simple_acc, train_time = train(model, train_loader, optimizer, criterion, device)
         val_loss, val_acc = validate(model, val_loader, criterion, device)
-        print(f"【{epoch + 1}/10】\n"
+        print(f"【{epoch + 1}/100】\n"
               f"train time: {train_time:.2f} [s]\n"
               f"train loss: {train_loss:.4f}\n"
               f"Val Loss {val_loss:.4f}\n"
