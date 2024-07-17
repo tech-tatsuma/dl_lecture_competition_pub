@@ -41,8 +41,6 @@ def test(model_path: str):
     np.save("submission.npy", submission)
 
 
-
-
 if __name__ == "__main__":
     setproctitle("test")
     model_path = "best_model.pth"
